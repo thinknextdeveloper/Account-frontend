@@ -58,13 +58,6 @@ export interface Student {
 
 interface GetStudentArgs {
   idNo: string;
-  // Explicit semester/session are ONLY passed when the person manually
-  // picks a semester from the dropdown (see handleSemesterChange in the
-  // page component). A plain "Find" click omits both so the backend
-  // always re-resolves them fresh — this mirrors VB's Display(), which
-  // calls Module1.ShowSession() and Module1.ShowCurSemester(...)
-  // unconditionally every time, never reading the textbox's existing
-  // value first.
   semester?: string;
   session?: string;
   scheme?: string;
@@ -109,16 +102,7 @@ interface AdmissionFeeState {
   schemes: string[];
   categories: string[];
   modesOfAdmission: string[];
-  // The live "current session" from MasterSession.CurrentSession —
-  // mirrors VB's txtSession.Text after Module1.ShowSession(). This is
-  // NOT the student's stored Session; it's whatever the backend resolves
-  // as "now", and it is refreshed on every successful fetch.
   currentSession: string | null;
-  // The semester MasterCurrentSemester resolved for this
-  // College+Course+Batch — mirrors VB's cmbSemester.Text after
-  // Module1.ShowCurSemester(...). Refreshed on every successful fetch
-  // where the backend was asked to auto-resolve it.
-  resolvedSemester: string | null;
   metaLoading: boolean;
   metaError: string | null;
 
@@ -137,7 +121,6 @@ const initialState: AdmissionFeeState = {
   saveMessage: null,
   lastReceiptNo: null,
   currentSession: null,
-  resolvedSemester: null,
 
   schemes: [],
   categories: [],
@@ -193,7 +176,7 @@ export const saveFeeEntry = createAsyncThunk(
 
       if (!response.success) {
         return rejectWithValue(
-          response.error?.message || "Failed to save fee entry"
+          response.error?.message || response.message || "Failed to save fee entry"
         );
       }
 
@@ -231,7 +214,7 @@ export const updateAdmissionMeta = createAsyncThunk(
       );
       if (!response.success) {
         return rejectWithValue(
-          response.error?.message || "Failed to update"
+          response.error?.message || response.data || "Failed to update"
         );
       }
       return response.data ?? response;
@@ -244,20 +227,6 @@ export const updateAdmissionMeta = createAsyncThunk(
 /* ------------------------------------------------------------------ */
 /*  Slice                                                               */
 /* ------------------------------------------------------------------ */
-
-function mapFeeHeads(rawHeads: any[]): FeeHeadEntry[] {
-  return (rawHeads ?? []).map((row) => ({
-    Head: row.Head,
-    Debit: typeof row.Debit === "number" ? row.Debit : Number(row.Debit) || 0,
-    Credit: typeof row.Credit === "number" ? row.Credit : Number(row.Credit) || 0,
-    BalanceHeadWise:
-      typeof row.BalanceHeadWise === "number"
-        ? row.BalanceHeadWise
-        : Number(row.BalanceHeadWise) || 0,
-    Concession:
-      typeof row.Concession === "number" ? row.Concession : Number(row.Concession) || 0,
-  }));
-}
 
 const admissionFeeSlice = createSlice({
   name: "admissionFee",
@@ -274,7 +243,6 @@ const admissionFeeSlice = createSlice({
       state.schemes = [];
       state.categories = [];
       state.modesOfAdmission = [];
-      state.resolvedSemester = null;
       state.metaError = null;
       state.updateError = null;
     },
@@ -298,22 +266,25 @@ const admissionFeeSlice = createSlice({
         state.student = payload.student ?? null;
         state.ledger = payload.ledger ?? [];
         state.lastReceiptNo = payload.receiptNo ?? null;
-
-        // Always overwrite — mirrors VB's unconditional
-        // txtSession.Text = Module1.ShowSession() on every Display() call.
-        // Do NOT merge/preserve the previous value here; a stale session
-        // from a prior student must not leak into the new lookup.
-        state.currentSession = payload.currentSession ?? null;
-
-        // Always overwrite — mirrors VB's unconditional
-        // cmbSemester.Text = Module1.ShowCurSemester(...) on every
-        // Display() call.
-        state.resolvedSemester = payload.semester ?? null;
+        if (payload.currentSession) {
+          state.currentSession = payload.currentSession;
+        }
 
         // Backend already returns the exact shape we need
         // ({Head, Debit, Credit, BalanceHeadWise, Concession}) — no
         // remapping needed, just coerce numbers defensively.
-        state.feeHeads = mapFeeHeads(payload.feeHeads);
+        const rawHeads: any[] = payload.feeHeads ?? [];
+        state.feeHeads = rawHeads.map((row) => ({
+          Head: row.Head,
+          Debit: typeof row.Debit === "number" ? row.Debit : Number(row.Debit) || 0,
+          Credit: typeof row.Credit === "number" ? row.Credit : Number(row.Credit) || 0,
+          BalanceHeadWise:
+            typeof row.BalanceHeadWise === "number"
+              ? row.BalanceHeadWise
+              : Number(row.BalanceHeadWise) || 0,
+          Concession:
+            typeof row.Concession === "number" ? row.Concession : Number(row.Concession) || 0,
+        }));
       })
       .addCase(getStudentDetails.rejected, (state, action: any) => {
         state.loading = false;
@@ -338,7 +309,17 @@ const admissionFeeSlice = createSlice({
           state.ledger = payload.ledger;
         }
         if (payload.feeHeads) {
-          state.feeHeads = mapFeeHeads(payload.feeHeads);
+          state.feeHeads = payload.feeHeads.map((row: any) => ({
+            Head: row.Head,
+            Debit: typeof row.Debit === "number" ? row.Debit : Number(row.Debit) || 0,
+            Credit: typeof row.Credit === "number" ? row.Credit : Number(row.Credit) || 0,
+            BalanceHeadWise:
+              typeof row.BalanceHeadWise === "number"
+                ? row.BalanceHeadWise
+                : Number(row.BalanceHeadWise) || 0,
+            Concession:
+              typeof row.Concession === "number" ? row.Concession : Number(row.Concession) || 0,
+          }));
         }
 
         state.lastReceiptNo = payload.receiptNo ?? null;
@@ -361,10 +342,6 @@ const admissionFeeSlice = createSlice({
         state.schemes = payload.schemes ?? [];
         state.categories = payload.categories ?? [];
         state.modesOfAdmission = payload.modesOfAdmission ?? [];
-        // This endpoint is fired right after student load (see the page's
-        // student-load effect) purely to populate dropdown option lists —
-        // it should NOT clobber the currentSession that
-        // getStudentDetails just set, so this one stays merge-only.
         if (payload.currentSession) {
           state.currentSession = payload.currentSession;
         }
@@ -395,7 +372,17 @@ const admissionFeeSlice = createSlice({
           state.ledger = payload.ledger;
         }
         if (payload.feeHeads) {
-          state.feeHeads = mapFeeHeads(payload.feeHeads);
+          state.feeHeads = payload.feeHeads.map((row: any) => ({
+            Head: row.Head,
+            Debit: typeof row.Debit === "number" ? row.Debit : Number(row.Debit) || 0,
+            Credit: typeof row.Credit === "number" ? row.Credit : Number(row.Credit) || 0,
+            BalanceHeadWise:
+              typeof row.BalanceHeadWise === "number"
+                ? row.BalanceHeadWise
+                : Number(row.BalanceHeadWise) || 0,
+            Concession:
+              typeof row.Concession === "number" ? row.Concession : Number(row.Concession) || 0,
+          }));
         }
       })
       .addCase(updateAdmissionMeta.rejected, (state, action: any) => {

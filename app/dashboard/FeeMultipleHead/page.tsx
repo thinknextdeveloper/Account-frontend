@@ -554,17 +554,10 @@ export default function AdmissionFeePage() {
 
   const hasStudent = !!student;
 
-  // Initial default only — before any student has been searched, seed the
-  // Session box with the live current session so it isn't blank on first
-  // paint. Once a Find has happened, handleShow takes over completely and
-  // always overwrites `session`/`semester` itself, so this effect must NOT
-  // keep re-applying afterwards (that would fight with, or mask, the
-  // unconditional refresh handleShow is responsible for).
   useEffect(() => {
-    if (currentSession && !hasStudent) {
-      setSession(currentSession);
+    if (currentSession) {
+      setSession((prev) => prev || currentSession);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSession]);
 
   useEffect(() => {
@@ -607,6 +600,7 @@ export default function AdmissionFeePage() {
     if (student) {
       setStudentTypeTab(student.StudentType === "Old" ? "Old" : "New");
       setLateralEntry(student.LateralEntry === "Yes");
+      setSession((prev) => prev || student.Session || currentSession || "");
       setOnAccountOf((prev) => prev || "Fee");
       setFeeRows(buildFeeRows(feeHeads));
     }
@@ -619,16 +613,10 @@ export default function AdmissionFeePage() {
     }
   }, [hasStudent]);
 
-  // Mirrors VB Display(): every Find click re-resolves Session and
-  // Semester from scratch and OVERWRITES whatever was showing before —
-  // exactly like:
-  //   txtSession.Text = Module1.ShowSession()
-  //   cmbSemester.Text = Module1.ShowCurSemester(CollegeName, Course, Batch)
-  // Neither of those VB calls reads the textbox's current value first, so
-  // this handler intentionally does NOT send the existing `semester`/
-  // `session` state to the backend as a constraint — doing so would pin
-  // the lookup to a previous student's leftover values and prevent the
-  // fresh auto-resolve from ever running.
+  // Mirrors VB Display(): fetches the student, and if the person hasn't
+  // already picked a semester, adopts whatever MasterCurrentSemester
+  // resolved on the backend (ShowCurSemester equivalent) so the Semester
+  // dropdown auto-fills and the Fee grid populates without a manual pick.
   const handleShow = async () => {
     if (!idNo) return;
     setFormError(null);
@@ -636,28 +624,27 @@ export default function AdmissionFeePage() {
 
     try {
       const result = await dispatch(
-        getStudentDetails({ idNo })
+        getStudentDetails({
+          idNo,
+          semester: semester || undefined,
+          session: session || undefined,
+        })
       ).unwrap();
 
-      // Always overwrite — never conditional on the previous value.
-      setSemester(result.semester || "");
-      setSession(result.currentSession || "");
-
+      if (!semester && result.semester) {
+        setSemester(result.semester);
+      }
+      if (result.session || result.currentSession) {
+        setSession(result.session || result.currentSession);
+      }
       if (result.receiptNo !== undefined && result.receiptNo !== null) {
         setReceiptNo(String(result.receiptNo));
-      } else {
-        setReceiptNo("");
       }
     } catch {
       // error already surfaces via the `error` banner
     }
   };
 
-  // Manual semester override from the dropdown — distinct from Find.
-  // This mirrors VB's cmbSemester_SelectedIndexChanged, which recalculates
-  // the fee grid for whatever semester the person just picked, without
-  // re-running ShowCurSemester(). Session stays whatever's currently in
-  // the box since the person is just re-pricing, not re-resolving "now".
   const handleSemesterChange = (value: string) => {
     setSemester(value);
     if (idNo && hasStudent) {
