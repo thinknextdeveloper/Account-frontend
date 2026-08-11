@@ -1,4 +1,5 @@
 // store/slices/DebitEntrySlice.ts
+
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { reduxApiClient } from "@/services/reduxservices";
 
@@ -19,10 +20,10 @@ export interface StudentDetail {
   Sex: string | null;
   PermanentAddress: string | null;
   PhoneNo: string | null;
-  StudentMobile: string | null;
-  FatherMobile: string | null;
-  MotherMobile: string | null;
-  LateralEntry: boolean;
+  StudentMobileNo: string | null;
+  FatherMobileNo: string | null;
+  MotherMobileNo: string | null;
+  LateralEntry: boolean | string | null;
   HostelName?: string | null;
   RoomType?: string | null;
   BusRoute?: string | null;
@@ -46,6 +47,8 @@ export interface MetaOptions {
 export interface FeeHead {
   head: string;
   credit: number;
+  debit?: number;
+  id?: number;
 }
 
 interface DebitEntryState {
@@ -113,22 +116,32 @@ export const fetchStudentByIdNo = createAsyncThunk(
   }
 );
 
-// Matches the real backend contract: GET /api/debit/fee-heads
-// requires idNo, semester, feeCategory as query params and returns
-// { success: true, feeHeads: [{ head, credit }] } — no "total" field,
-// so we compute the total client-side in the reducer below.
 export interface FetchFeeHeadsParams {
   idNo: string;
-  semester: string;
+  semester?: string;
   feeCategory: string;
+  modeOfAdmission?: string;
 }
 
 export const fetchFeeHeads = createAsyncThunk(
   "debitEntry/fetchFeeHeads",
   async (params: FetchFeeHeadsParams, { rejectWithValue }) => {
-    const res = await reduxApiClient.get("debit/fee-heads", params as any);
+    const queryParams: Record<string, string> = {
+      idNo: params.idNo,
+      feeCategory: params.feeCategory,
+    };
+    
+    if (params.semester && params.semester.trim() !== "") {
+      queryParams.semester = params.semester;
+    }
+    
+    if (params.modeOfAdmission && params.modeOfAdmission.trim() !== "") {
+      queryParams.modeOfAdmission = params.modeOfAdmission;
+    }
+
+    const res = await reduxApiClient.get("debit/fee-heads", queryParams);
     if (!res.success) return rejectWithValue(res.error?.message);
-    return res.data as { success: boolean; feeHeads: FeeHead[] };
+    return res.data as { success: boolean; feeHeads: FeeHead[]; totalCredit?: number };
   }
 );
 
@@ -174,6 +187,7 @@ export interface SaveDebitPayload {
   debit: string;
   remarks?: string;
   dateEntry?: string;
+  feeHeads?: FeeHead[];
 }
 
 export const saveDebitEntry = createAsyncThunk(
@@ -195,9 +209,6 @@ const debitEntrySlice = createSlice({
     clearStudent(state) {
       state.student = null;
       state.studentError = null;
-      state.feeHeads = [];
-      state.feeHeadsTotal = 0;
-      state.feeHeadsError = null;
     },
     clearSaveStatus(state) {
       state.saveError = null;
@@ -206,10 +217,26 @@ const debitEntrySlice = createSlice({
     resetDebitEntry() {
       return initialState;
     },
+    // Update a specific fee head amount
+    updateFeeHeadAmount(state, action: { payload: { index: number; amount: number } }) {
+      const { index, amount } = action.payload;
+      if (state.feeHeads[index]) {
+        state.feeHeads[index].credit = amount;
+        // Recalculate total
+        state.feeHeadsTotal = state.feeHeads.reduce((sum, h) => sum + (h.credit || 0), 0);
+      }
+    },
+    // Clear all fee head amounts (set to 0) - like VB.NET Button1_Click
+    clearFeeHeads(state) {
+      state.feeHeads = state.feeHeads.map(fh => ({
+        ...fh,
+        credit: 0
+      }));
+      state.feeHeadsTotal = 0;
+    },
   },
   extraReducers: (builder) => {
     builder
-      // meta options
       .addCase(fetchMetaOptions.pending, (state) => {
         state.metaLoading = true;
       })
@@ -228,8 +255,6 @@ const debitEntrySlice = createSlice({
       .addCase(fetchMetaOptions.rejected, (state) => {
         state.metaLoading = false;
       })
-
-      // student lookup (Student's type = Old)
       .addCase(fetchStudentByIdNo.pending, (state) => {
         state.studentLoading = true;
         state.studentError = null;
@@ -243,8 +268,6 @@ const debitEntrySlice = createSlice({
         state.student = null;
         state.studentError = action.payload || "Student not found";
       })
-
-      // fee heads (Heads / Credit grid) — triggered by the Search button
       .addCase(fetchFeeHeads.pending, (state) => {
         state.feeHeadsLoading = true;
         state.feeHeadsError = null;
@@ -253,7 +276,7 @@ const debitEntrySlice = createSlice({
         state.feeHeadsLoading = false;
         const heads: FeeHead[] = action.payload.feeHeads || [];
         state.feeHeads = heads;
-        state.feeHeadsTotal = heads.reduce((sum, h) => sum + (h.credit || 0), 0);
+        state.feeHeadsTotal = action.payload.totalCredit || heads.reduce((sum, h) => sum + (h.credit || 0), 0);
       })
       .addCase(fetchFeeHeads.rejected, (state, action: any) => {
         state.feeHeadsLoading = false;
@@ -261,8 +284,6 @@ const debitEntrySlice = createSlice({
         state.feeHeadsTotal = 0;
         state.feeHeadsError = action.payload || "Failed to load fee heads";
       })
-
-      // save (ADD button)
       .addCase(saveDebitEntry.pending, (state) => {
         state.saving = true;
         state.saveError = null;
@@ -279,6 +300,11 @@ const debitEntrySlice = createSlice({
   },
 });
 
-export const { clearStudent, clearSaveStatus, resetDebitEntry } =
-  debitEntrySlice.actions;
+export const { 
+  clearStudent, 
+  clearSaveStatus, 
+  resetDebitEntry,
+  updateFeeHeadAmount,
+  clearFeeHeads
+} = debitEntrySlice.actions;
 export default debitEntrySlice.reducer;

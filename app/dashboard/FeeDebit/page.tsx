@@ -1,4 +1,5 @@
-// app/debit-entry/page.tsx
+// app/debit-entry/page.tsx - Updated version with proper fee heads display
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -13,6 +14,8 @@ import {
   clearStudent,
   clearSaveStatus,
   SaveDebitPayload,
+  updateFeeHeadAmount,
+  clearFeeHeads,
 } from "@/store/slices/DebitEntrySlice";
 
 const todayStr = () => {
@@ -29,7 +32,6 @@ const todayStr = () => {
 export default function DebitEntryPage() {
   const dispatch = useDispatch<AppDispatch>();
 
-  // ---- Pull EVERYTHING from the debitEntry slice ----
   const {
     metaOptions,
     metaLoading,
@@ -44,7 +46,7 @@ export default function DebitEntryPage() {
     saveError,
     saveSuccess,
   } = useSelector((state: RootState) => state.debitEntry);
-
+console.log("----------",feeHeads)
   const [colleges, setColleges] = useState<string[]>([]);
   const [collegeName, setCollegeName] = useState("");
 
@@ -82,9 +84,6 @@ export default function DebitEntryPage() {
   const [debit, setDebit] = useState("");
   const [remarks, setRemarks] = useState("");
 
-  // Heads/Credit grid selection
-  const [selectedHeadIndex, setSelectedHeadIndex] = useState<number | null>(null);
-
   // Student's type + Student detail
   const [studentType, setStudentType] = useState<"New" | "Old">("Old");
   const [detail, setDetail] = useState({
@@ -109,69 +108,22 @@ export default function DebitEntryPage() {
   });
   const [formError, setFormError] = useState<string | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
-console.log("Student:", student);
-  // ---- Effects (all state above is declared before any effect reads it) ----
-// Remove the separate lowercase-checking effect entirely:
-//   useEffect(() => {
-//     if (student?.semester) { setSemester(student.semester); }
-//   }, [student]);
-//
-// and fold semester + category + mobile-field fixes into the main
-// student-detail effect:
 
-useEffect(() => {
-  if (student) {
-    setDetail({
-      collegeName: student.CollegeName || "",
-      course: student.Course || "",
-      batch: String(student.Batch ?? ""),
-      studentClass: student.Class || "",
-      classRollNo: student.ClassRollNo || "",
-      uniRollNo: student.UniRollNo || "",
-      studentName: student.StudentName || "",
-      fatherName: student.FatherName || "",
-      motherName: student.MotherName || "",
-      scheme: student.Scheme || "",
-      dob: student.DOB || "",
-      sex: student.Sex || "",
-      permanentAddress: student.PermanentAddress || "",
-      phoneNo: student.PhoneNo || "",
-      // Bug: these three were reading student.StudentMobile / FatherMobile /
-      // MotherMobile, but the API returns *MobileNo — so these always came
-      // back blank even though the data was present in the response.
-      studentMobile: student.StudentMobileNo || "",
-      fatherMobile: student.FatherMobileNo || "",
-      motherMobile: student.MotherMobileNo || "",
-      lateralEntry: student.LateralEntry === true || student.LateralEntry === "Yes",
-    });
-    if (student.CollegeName) setCollegeName(student.CollegeName);
-
-    // Auto-fill semester from the student record, converted to the
-    // dropdown's "Semester N" format.
-    if (student.Semester) {
-      setSemester(student.Semester);
-    }
-
-    // Auto-fill category too, once metaOptions.categories has loaded —
-    // if it loads later, the categoriesReady-gated Search button will
-    // still work with whatever the user picks/keeps.
-    if (student.Category) {
-      setCategory(student.Category);
-    }
-  }
-}, [student]);
+  // Load colleges on mount
   useEffect(() => {
     reduxApiClient.get("master-course/colleges").then((res) => {
       if (res.success) setColleges(res.data.data);
     });
   }, []);
 
+  // Fetch meta options when college name or route changes
   useEffect(() => {
     if (collegeName) {
       dispatch(fetchMetaOptions({ collegeName, route: route || undefined }));
     }
   }, [dispatch, collegeName, route]);
 
+  // Update student detail when student data is loaded
   useEffect(() => {
     if (student) {
       setDetail({
@@ -189,53 +141,56 @@ useEffect(() => {
         sex: student.Sex || "",
         permanentAddress: student.PermanentAddress || "",
         phoneNo: student.PhoneNo || "",
-        studentMobile: student.StudentMobile || "",
-        fatherMobile: student.FatherMobile || "",
-        motherMobile: student.MotherMobile || "",
-        lateralEntry: !!student.LateralEntry,
+        studentMobile: student.StudentMobileNo || "",
+        fatherMobile: student.FatherMobileNo || "",
+        motherMobile: student.MotherMobileNo || "",
+        lateralEntry: student.LateralEntry === true || student.LateralEntry === "Yes",
       });
       if (student.CollegeName) setCollegeName(student.CollegeName);
+      if (student.Category) setCategory(student.Category);
     }
   }, [student]);
 
-const handleIdNoBlur = () => {
-  if (studentType === "Old" && idNo.trim()) {
-    dispatch(fetchStudentByIdNo(idNo.trim()));
-  }
-};
-const categoriesReady = metaOptions.categories.length > 0;
+  const handleIdNoBlur = () => {
+    if (studentType === "Old" && idNo.trim()) {
+      dispatch(fetchStudentByIdNo(idNo.trim()));
+    }
+  };
 
-  // Search button: the fee-heads API requires idNo + semester + feeCategory
-  // together, so this is a deliberate action rather than an auto-fetch on
-  // every field change.
-const handleSearch = () => {
-  if (!idNo.trim()) {
-    setSearchError("Please enter ID No.");
-    return;
-  }
-  if (!semester) {
-    setSearchError("Please select Semester.");
-    return;
-  }
-  // if (!categoriesReady) {
-  //   setSearchError("Still loading categories for this student — wait a moment and try again.");
-  //   return;
-  // }
-  if (!category) {
-    setSearchError("Please select Category.");
-    return;
-  }
-  setSearchError(null);
+  // Search button - fetches fee heads
+  const handleSearch = () => {
+    if (!idNo.trim()) {
+      setSearchError("Please enter ID No.");
+      return;
+    }
+    if (!category) {
+      setSearchError("Please select Category.");
+      return;
+    }
+    setSearchError(null);
 
-  dispatch(
-    fetchFeeHeads({
+    const params: { idNo: string; feeCategory: string; semester?: string } = {
       idNo: idNo.trim(),
-      semester,
       feeCategory: category,
-    })
-  );
-  setSelectedHeadIndex(null);
-};
+    };
+    
+    if (semester && semester.trim() !== "") {
+      params.semester = semester;
+    }
+
+    dispatch(fetchFeeHeads(params));
+  };
+
+  // Handle fee head amount change
+  const handleFeeHeadChange = (index: number, value: string) => {
+    const numValue = parseFloat(value) || 0;
+    dispatch(updateFeeHeadAmount({ index, amount: numValue }));
+  };
+
+  // Handle clear button - sets all credit values to 0
+  const handleClearHeads = () => {
+    dispatch(clearFeeHeads());
+  };
 
   const handleStudentTypeChange = (type: "New" | "Old") => {
     setStudentType(type);
@@ -277,7 +232,6 @@ const handleSearch = () => {
     setParticulars("Fee");
     setDebit("");
     setRemarks("");
-    setSelectedHeadIndex(null);
   };
 
   const handleClear = () => {
@@ -298,21 +252,15 @@ const handleSearch = () => {
     resetDebitFieldsOnly();
     dispatch(clearStudent());
     dispatch(clearSaveStatus());
+    dispatch(clearFeeHeads());
     setFormError(null);
     setSearchError(null);
   };
 
   const handleNewEntry = () => {
     resetDebitFieldsOnly();
+    dispatch(clearFeeHeads());
     dispatch(clearSaveStatus());
-  };
-
-  const handleHeadRowClick = (index: number) => {
-    const fh = feeHeads[index];
-    if (!fh) return;
-    setSelectedHeadIndex(index);
-    setParticulars(fh.head);
-    setDebit(String(fh.credit ?? ""));
   };
 
   const handleAdd = () => {
@@ -323,8 +271,14 @@ const handleSearch = () => {
     if (ledgerName === "Others" && !othersLedgerName) {
       setFormError("Please select an Others ledger");
       return;
+       }
+    // For Fee ledger, use the total from fee heads
+    let debitAmount = debit;
+    if (ledgerName === "Fee" && feeHeads.length > 0) {
+      debitAmount = String(feeHeadsTotal);
     }
-    if (!debit || Number(debit) <= 0) {
+    
+    if (!debitAmount || Number(debitAmount) <= 0) {
       setFormError("Please enter a valid Debit amount");
       return;
     }
@@ -333,51 +287,46 @@ const handleSearch = () => {
     const payload: SaveDebitPayload = {
       studentType,
       idNo: idNo.trim(),
-      studentDetail:
-        studentType === "New"
-          ? {
-              collegeName: detail.collegeName,
-              course: detail.course,
-              batch: detail.batch,
-              studentClass: detail.studentClass,
-              classRollNo: detail.classRollNo,
-              uniRollNo: detail.uniRollNo,
-              studentName: detail.studentName,
-              fatherName: detail.fatherName,
-              motherName: detail.motherName,
-              scheme: detail.scheme,
-              dob: detail.dob,
-              sex: detail.sex,
-              permanentAddress: detail.permanentAddress,
-              phoneNo: detail.phoneNo,
-              studentMobile: detail.studentMobile,
-              fatherMobile: detail.fatherMobile,
-              motherMobile: detail.motherMobile,
-              lateralEntry: detail.lateralEntry,
-            }
-          : undefined,
+      studentDetail: studentType === "New" ? {
+        collegeName: detail.collegeName,
+        course: detail.course,
+        batch: detail.batch,
+        studentClass: detail.studentClass,
+        classRollNo: detail.classRollNo,
+        uniRollNo: detail.uniRollNo,
+        studentName: detail.studentName,
+        fatherName: detail.fatherName,
+        motherName: detail.motherName,
+        scheme: detail.scheme,
+        dob: detail.dob,
+        sex: detail.sex,
+        permanentAddress: detail.permanentAddress,
+        phoneNo: detail.phoneNo,
+        studentMobile: detail.studentMobile,
+        fatherMobile: detail.fatherMobile,
+        motherMobile: detail.motherMobile,
+        lateralEntry: detail.lateralEntry,
+      } : undefined,
       session,
-      semester,
+      semester: semester || undefined,
       category: allCategory ? category : undefined,
       modeOfAdmission: allModeAdmission ? modeOfAdmission : undefined,
       ledgerName,
       othersLedgerName: ledgerName === "Others" ? othersLedgerName : undefined,
-      facility:
-        chkHostel || chkRoomType || chkRoute || chkStopage
-          ? {
-              hostelName: chkHostel ? hostelName : undefined,
-              roomType: chkRoomType ? roomType : undefined,
-              route: chkRoute ? route : undefined,
-              stopage: chkStopage ? stopage : undefined,
-              amount: facilityAmount || undefined,
-            }
-          : undefined,
+      facility: chkHostel || chkRoomType || chkRoute || chkStopage ? {
+        hostelName: chkHostel ? hostelName : undefined,
+        roomType: chkRoomType ? roomType : undefined,
+        route: chkRoute ? route : undefined,
+        stopage: chkStopage ? stopage : undefined,
+        amount: facilityAmount || undefined,
+      } : undefined,
       refundEntry,
       concessionEntry,
       particulars,
-      debit,
+      debit: debitAmount,
       remarks,
       dateEntry: entryDate,
+      feeHeads: feeHeads,
     };
 
     dispatch(saveDebitEntry(payload));
@@ -390,6 +339,10 @@ const handleSearch = () => {
     "flex-1 border border-gray-300 h-8 px-2 rounded text-[13px] bg-white text-gray-900 disabled:bg-gray-100 disabled:text-gray-400";
   const radioCls = "flex items-center gap-1 text-[13px] font-semibold text-gray-800";
   const checkCls = "flex items-center gap-1 text-[13px] font-semibold text-gray-800";
+
+  // Debug log to see what feeHeads contains
+  console.log("Fee Heads Data:", feeHeads);
+  console.log("Fee Heads Total:", feeHeadsTotal);
 
   return (
     <div
@@ -464,13 +417,13 @@ const handleSearch = () => {
                 className="w-32 border border-gray-300 h-8 px-2 rounded text-[13px] bg-white text-gray-900"
               />
               <button
-  type="button"
-  onClick={handleSearch}
-  disabled={feeHeadsLoading || (studentType === "Old" && studentLoading)}
-  className="bg-blue-600 text-white font-semibold text-[13px] px-5 h-8 rounded hover:bg-blue-700 disabled:opacity-50 ml-2"
->
-  {feeHeadsLoading ? "Searching..." : studentLoading ? "Loading student..." : "Search"}
-</button>
+                type="button"
+                onClick={handleSearch}
+                disabled={feeHeadsLoading || (studentType === "Old" && studentLoading)}
+                className="bg-blue-600 text-white font-semibold text-[13px] px-5 h-8 rounded hover:bg-blue-700 disabled:opacity-50 ml-2"
+              >
+                {feeHeadsLoading ? "Searching..." : studentLoading ? "Loading student..." : "Search"}
+              </button>
             </div>
             {searchError && (
               <p className="text-red-600 text-[12px] mt-1">{searchError}</p>
@@ -642,7 +595,7 @@ const handleSearch = () => {
                     className={selectCls}
                   >
                     <option value="">-- select --</option>
-                    {["Semester 1","Semester 2","Semester 3","Semester 4","Semester 5","Semester 6"].map((s) => (
+                    {["Semester 1","Semester 2","Semester 3","Semester 4","Semester 5","Semester 6","Semester 7","Semester 8"].map((s) => (
                       <option key={s} value={s}>{s}</option>
                     ))}
                   </select>
@@ -656,10 +609,6 @@ const handleSearch = () => {
                     />
                     All Category
                   </label>
-                  {/* Category is always selectable: Search requires a
-                      feeCategory value regardless of whether "All Category"
-                      is checked (that flag only affects what gets sent
-                      on Save). */}
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
@@ -725,8 +674,9 @@ const handleSearch = () => {
                 <div className="flex items-center gap-2">
                   <label className={labelCls}>Debit</label>
                   <input
-                    value={debit}
+                    value={ledgerName === "Fee" && feeHeads.length > 0 ? String(feeHeadsTotal) : debit}
                     onChange={(e) => setDebit(e.target.value)}
+                    disabled={ledgerName === "Fee" && feeHeads.length > 0}
                     className={inputCls}
                   />
                 </div>
@@ -740,36 +690,39 @@ const handleSearch = () => {
                 </div>
               </div>
 
-              {/* Heads / Credit grid — surfaces feeHeads, feeHeadsTotal,
-                  feeHeadsLoading and feeHeadsError from the slice */}
-              <div className="w-48 h-56 border border-gray-500 bg-white shrink-0 flex flex-col overflow-hidden">
+              {/* Heads / Credit grid - Editable Input Fields */}
+              <div className="w-60 border border-gray-500 bg-white shrink-0 flex flex-col overflow-hidden">
                 <div className="grid grid-cols-2 bg-gray-300 text-[12px] font-bold text-gray-900 border-b border-gray-400">
                   <div className="px-2 py-1 border-r border-gray-400">Heads</div>
-                  <div className="px-2 py-1 text-right">Credit</div>
+                  <div className="px-2 py-1 text-center">Credit</div>
                 </div>
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 overflow-y-auto max-h-64">
                   {feeHeadsLoading ? (
-                    <div className="p-2 text-[12px] text-gray-500">Loading…</div>
+                    <div className="p-2 text-[12px] text-gray-500 text-center">Loading…</div>
                   ) : feeHeadsError ? (
-                    <div className="p-2 text-[12px] text-red-600">{feeHeadsError}</div>
+                    <div className="p-2 text-[12px] text-red-600 text-center">{feeHeadsError}</div>
                   ) : feeHeads.length === 0 ? (
-                    <div className="p-2 text-[12px] text-gray-400">
-                      No fee heads
+                    <div className="p-2 text-[12px] text-gray-400 text-center">
+                      Click "Search" to load fee heads
                     </div>
                   ) : (
                     feeHeads.map((fh, i) => (
                       <div
                         key={`${fh.head}-${i}`}
-                        onClick={() => handleHeadRowClick(i)}
-                        className={`grid grid-cols-2 text-[12px] cursor-pointer border-b border-gray-200 ${
-                          selectedHeadIndex === i
-                            ? "bg-blue-600 text-white"
-                            : "hover:bg-blue-50 text-gray-800"
-                        }`}
+                        className="grid grid-cols-2 border-b border-gray-200 hover:bg-blue-50"
                       >
-                        <div className="px-2 py-1 truncate">{fh.head}</div>
-                        <div className="px-2 py-1 text-right">
-                          {fh.credit ? fh.credit.toLocaleString() : ""}
+                        <div className="px-2 py-1 text-[12px] text-gray-800 truncate flex items-center">
+                          {fh.head}
+                        </div>
+                        <div className="px-1 py-1 flex items-center">
+                          <input
+                            type="text"
+                            value={fh.credit || ""}
+                            onChange={(e) => handleFeeHeadChange(i, e.target.value)}
+                            onFocus={(e) => e.target.select()}
+                            className="w-full h-7 px-1 text-[12px] text-black border border-gray-300 rounded text-right focus:border-blue-500 focus:outline-none"
+                            placeholder="0"
+                          />
                         </div>
                       </div>
                     ))
@@ -781,6 +734,13 @@ const handleSearch = () => {
                     {feeHeadsTotal.toLocaleString()}
                   </div>
                 </div>
+                <button
+                  onClick={handleClearHeads}
+                  disabled={feeHeads.length === 0}
+                  className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold text-[12px] py-1 border-t border-gray-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Clear
+                </button>
               </div>
             </div>
 
@@ -826,7 +786,7 @@ const handleSearch = () => {
               Student detail
             </legend>
             <div className="flex gap-3">
-              <div className="flex-1 space-y-2">
+              <div className="flex-1 space-y-2 max-h-[420px] overflow-y-auto pr-1">
                 <div className="flex items-center gap-2">
                   <label className={labelCls}>CollegeName</label>
                   <select
