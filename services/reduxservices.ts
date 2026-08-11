@@ -1,3 +1,4 @@
+// services/reduxservices.ts
 const getApiBaseUrl = (): string => {
   const envUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/";
   const clean = envUrl.replace(/['"]+/g, "").trim();
@@ -8,6 +9,23 @@ const buildFullUrl = (url: string): string => {
   const baseUrl = getApiBaseUrl();
   const cleanPath = url.startsWith("/") ? url.slice(1) : url;
   return `${baseUrl}${cleanPath}`;
+};
+
+// Drops undefined/null/"" values so they never get serialized as the
+// literal string "undefined" in the query string (URLSearchParams would
+// otherwise happily stringify a JS `undefined` value into "undefined").
+const cleanQueryParams = (
+  params?: Record<string, string | number | undefined | null>
+): Record<string, string> => {
+  const out: Record<string, string> = {};
+  if (!params) return out;
+  for (const key in params) {
+    const value = params[key];
+    if (value !== undefined && value !== null && value !== "") {
+      out[key] = String(value);
+    }
+  }
+  return out;
 };
 
 const handleResponse = async (response: Response) => {
@@ -120,9 +138,14 @@ export const reduxApiClient = {
     return handleResponse(response);
   },
 
-  get: (url: string, params?: Record<string, string>, includeToken = true) => {
-    const query = params
-      ? `?${new URLSearchParams(params).toString()}`
+  get: (
+    url: string,
+    params?: Record<string, string | number | undefined | null>,
+    includeToken = true
+  ) => {
+    const clean = cleanQueryParams(params);
+    const query = Object.keys(clean).length
+      ? `?${new URLSearchParams(clean).toString()}`
       : "";
 
     return reduxApiClient.request("GET", `${url}${query}`, undefined, includeToken);

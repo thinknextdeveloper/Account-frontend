@@ -13,6 +13,10 @@ import cancelReceiptReducer from "@/store/slices/cancelReceiptSlice";
 import deadDebitsReducer from "@/store/slices/deadDebitsSice"
 import facilityReducer from "./slices/facilitySlice";
 import receiptUpdateReducer from "./slices/receiptUpdateSlice";
+import concessionSliceReducer from "./slices/concessionSlice"
+import feeReportReducer from "@/store/slices/Feereportslice";
+import hostelReportReducer from "./slices/HostelReportSlice";
+import debitEntryReducer from "@/store/slices/DebitEntrySlice";
 
 
 export const store = configureStore({
@@ -31,6 +35,10 @@ export const store = configureStore({
     deadDebits : deadDebitsReducer,
     facility: facilityReducer,
     receiptUpdate: receiptUpdateReducer,
+    concession:concessionSliceReducer,
+    feeReport: feeReportReducer,
+    hostelReport: hostelReportReducer,
+      debitEntry: debitEntryReducer,
 
 
   },
