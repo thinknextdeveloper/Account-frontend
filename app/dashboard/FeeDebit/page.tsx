@@ -1,4 +1,4 @@
-// app/debit-entry/page.tsx - Updated version with proper fee heads display
+// app/debit-entry/page.tsx - Updated with user ID from storage
 
 "use client";
 
@@ -17,6 +17,7 @@ import {
   updateFeeHeadAmount,
   clearFeeHeads,
 } from "@/store/slices/DebitEntrySlice";
+import { getStorage } from "@/utils/storage"; // Import your storage functions
 
 const todayStr = () => {
   const d = new Date();
@@ -46,7 +47,10 @@ export default function DebitEntryPage() {
     saveError,
     saveSuccess,
   } = useSelector((state: RootState) => state.debitEntry);
-console.log("----------",feeHeads)
+
+  console.log("---------- feeHeads:", feeHeads);
+  console.log("---------- student:", student);
+
   const [colleges, setColleges] = useState<string[]>([]);
   const [collegeName, setCollegeName] = useState("");
 
@@ -109,6 +113,43 @@ console.log("----------",feeHeads)
   const [formError, setFormError] = useState<string | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
 
+  // ✅ NEW: Separate state for student semester
+  const [studentSemester, setStudentSemester] = useState<string>("");
+
+  // ✅ NEW: Get logged in user ID from encrypted storage
+  const [loggedInUserId, setLoggedInUserId] = useState<number>(1);
+
+  console.log("this is student detail:", detail);
+  console.log("this is student semester:", studentSemester);
+  console.log("this is selected semester:", semester);
+  console.log("this is logged in user ID:", loggedInUserId);
+
+  // Load logged in user ID on mount
+  useEffect(() => {
+    try {
+      // Get user data from encrypted storage
+      const userData = getStorage("user");
+      if (userData) {
+        const parsedUser = JSON.parse(userData);
+        if (parsedUser && parsedUser.id) {
+          setLoggedInUserId(parseInt(parsedUser.id));
+          console.log("✅ Logged in user ID loaded:", parsedUser.id);
+        }
+      }
+      
+      // Alternative: If you store user ID separately
+      const userId = getStorage("userId");
+      if (userId) {
+        setLoggedInUserId(parseInt(userId));
+        console.log("✅ User ID from storage:", userId);
+      }
+    } catch (error) {
+      console.error("Error loading user data:", error);
+      // Default to 1 if error
+      setLoggedInUserId(1);
+    }
+  }, []);
+
   // Load colleges on mount
   useEffect(() => {
     reduxApiClient.get("master-course/colleges").then((res) => {
@@ -126,6 +167,7 @@ console.log("----------",feeHeads)
   // Update student detail when student data is loaded
   useEffect(() => {
     if (student) {
+      // Update student detail
       setDetail({
         collegeName: student.CollegeName || "",
         course: student.Course || "",
@@ -146,6 +188,13 @@ console.log("----------",feeHeads)
         motherMobile: student.MotherMobileNo || "",
         lateralEntry: student.LateralEntry === true || student.LateralEntry === "Yes",
       });
+      
+      // Store student semester in separate state
+      if (student.Semester) {
+        setStudentSemester(student.Semester);
+        console.log("✅ Student Semester from API:", student.Semester);
+      }
+      
       if (student.CollegeName) setCollegeName(student.CollegeName);
       if (student.Category) setCategory(student.Category);
     }
@@ -169,13 +218,17 @@ console.log("----------",feeHeads)
     }
     setSearchError(null);
 
+    // Use semester from state (either selected or from student)
+    const semesterToUse = semester || studentSemester;
+    console.log("🔍 Searching with semester:", semesterToUse);
+
     const params: { idNo: string; feeCategory: string; semester?: string } = {
       idNo: idNo.trim(),
       feeCategory: category,
     };
     
-    if (semester && semester.trim() !== "") {
-      params.semester = semester;
+    if (semesterToUse && semesterToUse.trim() !== "") {
+      params.semester = semesterToUse;
     }
 
     dispatch(fetchFeeHeads(params));
@@ -195,6 +248,7 @@ console.log("----------",feeHeads)
   const handleStudentTypeChange = (type: "New" | "Old") => {
     setStudentType(type);
     dispatch(clearStudent());
+    setStudentSemester("");
     if (type === "New") {
       setDetail({
         collegeName: "",
@@ -253,6 +307,7 @@ console.log("----------",feeHeads)
     dispatch(clearStudent());
     dispatch(clearSaveStatus());
     dispatch(clearFeeHeads());
+    setStudentSemester("");
     setFormError(null);
     setSearchError(null);
   };
@@ -261,6 +316,7 @@ console.log("----------",feeHeads)
     resetDebitFieldsOnly();
     dispatch(clearFeeHeads());
     dispatch(clearSaveStatus());
+    setStudentSemester("");
   };
 
   const handleAdd = () => {
@@ -271,8 +327,8 @@ console.log("----------",feeHeads)
     if (ledgerName === "Others" && !othersLedgerName) {
       setFormError("Please select an Others ledger");
       return;
-       }
-    // For Fee ledger, use the total from fee heads
+    }
+    
     let debitAmount = debit;
     if (ledgerName === "Fee" && feeHeads.length > 0) {
       debitAmount = String(feeHeadsTotal);
@@ -283,6 +339,11 @@ console.log("----------",feeHeads)
       return;
     }
     setFormError(null);
+
+    // Use semester from state or student semester
+    const semesterToSave = semester || studentSemester;
+    console.log("💾 Saving with semester:", semesterToSave);
+    console.log("👤 Saving with User ID:", loggedInUserId);
 
     const payload: SaveDebitPayload = {
       studentType,
@@ -308,7 +369,7 @@ console.log("----------",feeHeads)
         lateralEntry: detail.lateralEntry,
       } : undefined,
       session,
-      semester: semester || undefined,
+      semester: semesterToSave,
       category: allCategory ? category : undefined,
       modeOfAdmission: allModeAdmission ? modeOfAdmission : undefined,
       ledgerName,
@@ -327,8 +388,10 @@ console.log("----------",feeHeads)
       remarks,
       dateEntry: entryDate,
       feeHeads: feeHeads,
+      userId: loggedInUserId, // ✅ Send logged in user ID
     };
 
+    console.log("📦 Final Payload with User ID:", payload);
     dispatch(saveDebitEntry(payload));
   };
 
@@ -339,10 +402,6 @@ console.log("----------",feeHeads)
     "flex-1 border border-gray-300 h-8 px-2 rounded text-[13px] bg-white text-gray-900 disabled:bg-gray-100 disabled:text-gray-400";
   const radioCls = "flex items-center gap-1 text-[13px] font-semibold text-gray-800";
   const checkCls = "flex items-center gap-1 text-[13px] font-semibold text-gray-800";
-
-  // Debug log to see what feeHeads contains
-  console.log("Fee Heads Data:", feeHeads);
-  console.log("Fee Heads Total:", feeHeadsTotal);
 
   return (
     <div
@@ -599,6 +658,11 @@ console.log("----------",feeHeads)
                       <option key={s} value={s}>{s}</option>
                     ))}
                   </select>
+                  {studentSemester && (
+                    <span className="text-[11px] text-green-600 ml-1">
+                      (Student: {studentSemester})
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <label className={checkCls + " w-36 shrink-0"}>

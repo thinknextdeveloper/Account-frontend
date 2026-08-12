@@ -3,35 +3,52 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { reduxApiClient } from "@/services/reduxservices";
 
-export interface StudentDetail {
-  IDNo: number | string;
-  StudentType?: string;
-  CollegeName: string;
-  Course: string;
-  Batch: number | string;
-  Class: string;
-  ClassRollNo: string | null;
-  UniRollNo: string | null;
-  StudentName: string;
-  FatherName: string;
-  MotherName: string | null;
-  Scheme: string | null;
-  DOB: string | null;
-  Sex: string | null;
-  PermanentAddress: string | null;
-  PhoneNo: string | null;
-  StudentMobileNo: string | null;
-  FatherMobileNo: string | null;
-  MotherMobileNo: string | null;
-  LateralEntry: boolean | string | null;
-  HostelName?: string | null;
-  RoomType?: string | null;
-  BusRoute?: string | null;
-  Stopage?: string | null;
-  Category?: string | null;
-  Quota?: string | null;
-  Session?: string | null;
-  Semester?: string | null;
+// store/slices/DebitEntrySlice.ts - Update the SaveDebitPayload interface
+
+export interface SaveDebitPayload {
+  studentType: "New" | "Old";
+  idNo: string;
+  studentDetail?: Partial<StudentDetail> & {
+    collegeName: string;
+    course: string;
+    batch: number | string;
+    studentClass: string;
+    classRollNo?: string;
+    uniRollNo?: string;
+    studentName: string;
+    fatherName: string;
+    motherName?: string;
+    scheme?: string;
+    dob?: string;
+    sex: string;
+    permanentAddress?: string;
+    phoneNo?: string;
+    studentMobile?: string;
+    fatherMobile?: string;
+    motherMobile?: string;
+    lateralEntry?: boolean;
+  };
+  session: string;
+  semester?: string;
+  category?: string;
+  modeOfAdmission?: string;
+  ledgerName: "Fee" | "Hostel" | "Bus" | "Others";
+  othersLedgerName?: string;
+  facility?: {
+    hostelName?: string;
+    roomType?: string;
+    route?: string;
+    stopage?: string;
+    amount?: string;
+  };
+  refundEntry: "Yes" | "No";
+  concessionEntry: "Yes" | "No";
+  particulars: string;
+  debit: string;
+  remarks?: string;
+  dateEntry?: string;
+  feeHeads?: FeeHead[];
+  userId?: number; // ✅ Added userId
 }
 
 export interface MetaOptions {
@@ -190,15 +207,28 @@ export interface SaveDebitPayload {
   feeHeads?: FeeHead[];
 }
 
+// store/slices/DebitEntrySlice.ts - Update the saveDebitEntry
+
 export const saveDebitEntry = createAsyncThunk(
   "debitEntry/saveDebitEntry",
   async (payload: SaveDebitPayload, { rejectWithValue }) => {
-    const res = await reduxApiClient.post(
-      `debit/${payload.idNo}/save`,
-      payload
-    );
-    if (!res.success) return rejectWithValue(res.error?.message);
-    return res.data as { message: string; receiptNo: number; transactionId: number };
+    try {
+      // Make sure userId is included in the payload
+      const finalPayload = {
+        ...payload,
+        // If userId is not set, use default 1
+        userId: payload.userId || 1,
+      };
+
+      const res = await reduxApiClient.post(
+        `debit/${payload.idNo}/save`,
+        finalPayload
+      );
+      if (!res.success) return rejectWithValue(res.error?.message);
+      return res.data as { message: string; receiptNo: number; transactionId: number };
+    } catch (error) {
+      return rejectWithValue(error.message || "Failed to save entry");
+    }
   }
 );
 
