@@ -48,9 +48,6 @@ export default function DebitEntryPage() {
     saveSuccess,
   } = useSelector((state: RootState) => state.debitEntry);
 
-  console.log("---------- feeHeads:", feeHeads);
-  console.log("---------- student:", student);
-
   const [colleges, setColleges] = useState<string[]>([]);
   const [collegeName, setCollegeName] = useState("");
 
@@ -113,39 +110,28 @@ export default function DebitEntryPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
 
-  // ✅ NEW: Separate state for student semester
+  // Separate state for student semester
   const [studentSemester, setStudentSemester] = useState<string>("");
 
-  // ✅ NEW: Get logged in user ID from encrypted storage
+  // Get logged in user ID from encrypted storage
   const [loggedInUserId, setLoggedInUserId] = useState<number>(1);
-
-  console.log("this is student detail:", detail);
-  console.log("this is student semester:", studentSemester);
-  console.log("this is selected semester:", semester);
-  console.log("this is logged in user ID:", loggedInUserId);
 
   // Load logged in user ID on mount
   useEffect(() => {
     try {
-      // Get user data from encrypted storage
       const userData = getStorage("user");
       if (userData) {
         const parsedUser = JSON.parse(userData);
         if (parsedUser && parsedUser.id) {
           setLoggedInUserId(parseInt(parsedUser.id));
-          console.log("✅ Logged in user ID loaded:", parsedUser.id);
         }
       }
-      
-      // Alternative: If you store user ID separately
       const userId = getStorage("userId");
       if (userId) {
         setLoggedInUserId(parseInt(userId));
-        console.log("✅ User ID from storage:", userId);
       }
     } catch (error) {
       console.error("Error loading user data:", error);
-      // Default to 1 if error
       setLoggedInUserId(1);
     }
   }, []);
@@ -167,7 +153,6 @@ export default function DebitEntryPage() {
   // Update student detail when student data is loaded
   useEffect(() => {
     if (student) {
-      // Update student detail
       setDetail({
         collegeName: student.CollegeName || "",
         course: student.Course || "",
@@ -188,13 +173,11 @@ export default function DebitEntryPage() {
         motherMobile: student.MotherMobileNo || "",
         lateralEntry: student.LateralEntry === true || student.LateralEntry === "Yes",
       });
-      
-      // Store student semester in separate state
+
       if (student.Semester) {
         setStudentSemester(student.Semester);
-        console.log("✅ Student Semester from API:", student.Semester);
       }
-      
+
       if (student.CollegeName) setCollegeName(student.CollegeName);
       if (student.Category) setCategory(student.Category);
     }
@@ -218,15 +201,13 @@ export default function DebitEntryPage() {
     }
     setSearchError(null);
 
-    // Use semester from state (either selected or from student)
     const semesterToUse = semester || studentSemester;
-    console.log("🔍 Searching with semester:", semesterToUse);
 
     const params: { idNo: string; feeCategory: string; semester?: string } = {
       idNo: idNo.trim(),
       feeCategory: category,
     };
-    
+
     if (semesterToUse && semesterToUse.trim() !== "") {
       params.semester = semesterToUse;
     }
@@ -328,22 +309,19 @@ export default function DebitEntryPage() {
       setFormError("Please select an Others ledger");
       return;
     }
-    
+
     let debitAmount = debit;
     if (ledgerName === "Fee" && feeHeads.length > 0) {
       debitAmount = String(feeHeadsTotal);
     }
-    
+
     if (!debitAmount || Number(debitAmount) <= 0) {
       setFormError("Please enter a valid Debit amount");
       return;
     }
     setFormError(null);
 
-    // Use semester from state or student semester
     const semesterToSave = semester || studentSemester;
-    console.log("💾 Saving with semester:", semesterToSave);
-    console.log("👤 Saving with User ID:", loggedInUserId);
 
     const payload: SaveDebitPayload = {
       studentType,
@@ -388,37 +366,41 @@ export default function DebitEntryPage() {
       remarks,
       dateEntry: entryDate,
       feeHeads: feeHeads,
-      userId: loggedInUserId, // ✅ Send logged in user ID
+      userId: loggedInUserId,
     };
 
-    console.log("📦 Final Payload with User ID:", payload);
     dispatch(saveDebitEntry(payload));
   };
 
   const inputCls =
-    "flex-1 border border-gray-300 h-8 px-2 rounded text-[13px] bg-white text-gray-900 disabled:bg-gray-100 disabled:text-gray-500";
-  const labelCls = "w-36 font-semibold text-[13px] text-gray-800 shrink-0";
+    "flex-1 min-w-0 border border-gray-300 h-8 px-2 rounded text-[13px] bg-white text-gray-900 disabled:bg-gray-100 disabled:text-gray-500";
+  const labelCls = "w-36 shrink-0 font-semibold text-[13px] text-gray-800";
   const selectCls =
-    "flex-1 border border-gray-300 h-8 px-2 rounded text-[13px] bg-white text-gray-900 disabled:bg-gray-100 disabled:text-gray-400";
+    "flex-1 min-w-0 border border-gray-300 h-8 px-2 rounded text-[13px] bg-white text-gray-900 disabled:bg-gray-100 disabled:text-gray-400";
   const radioCls = "flex items-center gap-1 text-[13px] font-semibold text-gray-800";
   const checkCls = "flex items-center gap-1 text-[13px] font-semibold text-gray-800";
 
   return (
     <div
-      className="min-h-screen p-6"
+      className="w-full min-h-screen p-3 sm:p-4 pb-8"
       style={{
         background:
           "linear-gradient(180deg, #ffffff 0%, #eef3f9 35%, #b9d3ec 100%)",
       }}
     >
-      <div className="max-w-6xl mx-auto grid grid-cols-2 gap-4">
+      {/* Responsive: stacks to a single column below the lg breakpoint instead of
+          squashing two fixed columns together. Items align to the top of each
+          row instead of stretching to match the taller sibling. Spacing is kept
+          tight (space-y-3, p-2 fieldsets) so the whole form — including the
+          ADD / New Entry / Close buttons — fits with minimal scrolling. */}
+      <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
         {/* ============ LEFT COLUMN ============ */}
-        <div className="space-y-4">
-          <fieldset className="border border-gray-400 rounded bg-white/70 p-3">
+        <div className="space-y-3">
+          <fieldset className="border border-gray-400 rounded bg-white/70 p-2">
             <legend className="px-1 font-bold text-[13px] text-gray-900">
               Debits From
             </legend>
-            <div className="flex items-center gap-6 mb-2">
+            <div className="flex items-center gap-6 mb-2 flex-wrap">
               <label className={radioCls}>
                 <input
                   type="radio"
@@ -436,7 +418,7 @@ export default function DebitEntryPage() {
                 Course
               </label>
             </div>
-            <div className="flex items-center gap-6 mb-2">
+            <div className="flex items-center gap-6 mb-2 flex-wrap">
               <label className={radioCls}>
                 <input
                   type="radio"
@@ -455,7 +437,7 @@ export default function DebitEntryPage() {
               </label>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <label className="font-semibold text-[13px] text-gray-800 w-16">
+              <label className="font-semibold text-[13px] text-gray-800 w-16 shrink-0">
                 ID No.
               </label>
               <input
@@ -467,7 +449,7 @@ export default function DebitEntryPage() {
               {studentLoading && (
                 <span className="text-[12px] text-gray-500">Looking up…</span>
               )}
-              <label className="font-semibold text-[13px] text-gray-800 ml-4 w-16">
+              <label className="font-semibold text-[13px] text-gray-800 sm:ml-4 w-16 shrink-0">
                 Date
               </label>
               <input
@@ -479,7 +461,7 @@ export default function DebitEntryPage() {
                 type="button"
                 onClick={handleSearch}
                 disabled={feeHeadsLoading || (studentType === "Old" && studentLoading)}
-                className="bg-blue-600 text-white font-semibold text-[13px] px-5 h-8 rounded hover:bg-blue-700 disabled:opacity-50 ml-2"
+                className="bg-blue-600 text-white font-semibold text-[13px] px-5 h-8 rounded hover:bg-blue-700 disabled:opacity-50 sm:ml-2"
               >
                 {feeHeadsLoading ? "Searching..." : studentLoading ? "Loading student..." : "Search"}
               </button>
@@ -492,7 +474,7 @@ export default function DebitEntryPage() {
             )}
           </fieldset>
 
-          <fieldset className="border border-gray-400 rounded bg-white/70 p-3">
+          <fieldset className="border border-gray-400 rounded bg-white/70 p-2">
             <legend className="px-1 font-bold text-[13px] text-gray-900">
               Ledgers
             </legend>
@@ -521,7 +503,7 @@ export default function DebitEntryPage() {
             </div>
           </fieldset>
 
-          <fieldset className="border border-gray-400 rounded bg-white/70 p-3">
+          <fieldset className="border border-gray-400 rounded bg-white/70 p-2">
             <legend className="px-1 font-bold text-[13px] text-gray-900 flex items-center gap-2">
               Update Facility Detail
               {metaLoading && (
@@ -530,9 +512,9 @@ export default function DebitEntryPage() {
                 </span>
               )}
             </legend>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
               <div className="flex items-center gap-2">
-                <label className={checkCls + " w-28"}>
+                <label className={checkCls + " w-28 shrink-0"}>
                   <input
                     type="checkbox"
                     checked={chkHostel}
@@ -554,7 +536,7 @@ export default function DebitEntryPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <label className={checkCls + " w-28"}>
+                <label className={checkCls + " w-28 shrink-0"}>
                   <input
                     type="checkbox"
                     checked={chkRoomType}
@@ -576,7 +558,7 @@ export default function DebitEntryPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <label className={checkCls + " w-28"}>
+                <label className={checkCls + " w-28 shrink-0"}>
                   <input
                     type="checkbox"
                     checked={chkRoute}
@@ -598,7 +580,7 @@ export default function DebitEntryPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <label className={checkCls + " w-28"}>
+                <label className={checkCls + " w-28 shrink-0"}>
                   <input
                     type="checkbox"
                     checked={chkStopage}
@@ -632,12 +614,12 @@ export default function DebitEntryPage() {
             </div>
           </fieldset>
 
-          <fieldset className="border border-gray-400 rounded bg-white/70 p-3">
+          <fieldset className="border border-gray-400 rounded bg-white/70 p-2">
             <legend className="px-1 font-bold text-[13px] text-gray-900">
               Debit
             </legend>
-            <div className="flex gap-3">
-              <div className="flex-1 space-y-2">
+            <div className="flex flex-col gap-3 w-full items-start">
+              <div className="flex-1 min-w-0 space-y-2">
                 <div className="flex items-center gap-2">
                   <label className={labelCls}>Session</label>
                   <input
@@ -646,7 +628,7 @@ export default function DebitEntryPage() {
                     className={inputCls}
                   />
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <label className={labelCls}>Semester</label>
                   <select
                     value={semester}
@@ -659,7 +641,7 @@ export default function DebitEntryPage() {
                     ))}
                   </select>
                   {studentSemester && (
-                    <span className="text-[11px] text-green-600 ml-1">
+                    <span className="text-[11px] text-green-600 basis-full sm:basis-auto ml-0 sm:ml-1">
                       (Student: {studentSemester})
                     </span>
                   )}
@@ -755,19 +737,19 @@ export default function DebitEntryPage() {
               </div>
 
               {/* Heads / Credit grid - Editable Input Fields */}
-              <div className="w-60 border border-gray-500 bg-white shrink-0 flex flex-col overflow-hidden">
+              <div className="w-full sm:w-60 border border-gray-500 bg-white shrink-0 flex flex-col overflow-hidden self-start">
                 <div className="grid grid-cols-2 bg-gray-300 text-[12px] font-bold text-gray-900 border-b border-gray-400">
                   <div className="px-2 py-1 border-r border-gray-400">Heads</div>
                   <div className="px-2 py-1 text-center">Credit</div>
                 </div>
-                <div className="flex-1 overflow-y-auto max-h-64">
+                <div className="overflow-y-auto max-h-64">
                   {feeHeadsLoading ? (
                     <div className="p-2 text-[12px] text-gray-500 text-center">Loading…</div>
                   ) : feeHeadsError ? (
                     <div className="p-2 text-[12px] text-red-600 text-center">{feeHeadsError}</div>
                   ) : feeHeads.length === 0 ? (
                     <div className="p-2 text-[12px] text-gray-400 text-center">
-                      Click "Search" to load fee heads
+                      Click &quot;Search&quot; to load fee heads
                     </div>
                   ) : (
                     feeHeads.map((fh, i) => (
@@ -808,7 +790,7 @@ export default function DebitEntryPage() {
               </div>
             </div>
 
-            <div className="flex justify-center mt-3">
+            <div className=" mt-3">
               <button
                 onClick={handleClear}
                 className="bg-blue-600 text-white font-semibold text-[13px] px-8 h-8 rounded hover:bg-blue-700"
@@ -820,10 +802,10 @@ export default function DebitEntryPage() {
         </div>
 
         {/* ============ RIGHT COLUMN ============ */}
-        <div className="space-y-4">
-          <fieldset className="border border-gray-400 rounded bg-white/70 p-3">
+        <div className="space-y-3">
+          <fieldset className="border border-gray-400 rounded bg-white/70 p-2">
             <legend className="px-1 font-bold text-[13px] text-gray-900">
-              Student's type
+              Student&apos;s type
             </legend>
             <div className="flex justify-center gap-10">
               <label className={radioCls}>
@@ -845,12 +827,21 @@ export default function DebitEntryPage() {
             </div>
           </fieldset>
 
-          <fieldset className="border border-gray-400 rounded bg-white/70 p-3">
+          <fieldset className="border border-gray-400 rounded bg-white/70 p-2">
             <legend className="px-1 font-bold text-[13px] text-gray-900">
               Student detail
             </legend>
-            <div className="flex gap-3">
-              <div className="flex-1 space-y-2 max-h-[420px] overflow-y-auto pr-1">
+            {/*
+              Fix: this panel previously had its own `max-h-[420px]
+              overflow-y-auto`, nested inside a page that already scrolls.
+              That produced two competing scrollbars and cut a row off
+              mid-height (visible in the bug screenshot). The panel now
+              flows naturally with the rest of the page — only the page
+              itself scrolls. The photo placeholder is pinned to the top
+              of the row instead of trailing the old scroll box.
+            */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex-1 min-w-0 space-y-2">
                 <div className="flex items-center gap-2">
                   <label className={labelCls}>CollegeName</label>
                   <select
@@ -917,7 +908,7 @@ export default function DebitEntryPage() {
                     className={inputCls}
                   />
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <label className={labelCls}>Name</label>
                   <input
                     value={detail.studentName}
@@ -925,7 +916,7 @@ export default function DebitEntryPage() {
                     readOnly={detailReadOnly}
                     className={inputCls}
                   />
-                  <label className={checkCls + " ml-3 shrink-0"}>
+                  <label className={checkCls + " sm:ml-3 shrink-0"}>
                     <input
                       type="checkbox"
                       checked={detail.lateralEntry}
@@ -972,7 +963,7 @@ export default function DebitEntryPage() {
                     className={inputCls}
                   />
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <label className={labelCls}>Sex</label>
                   <label className={radioCls}>
                     <input
@@ -999,7 +990,7 @@ export default function DebitEntryPage() {
                     value={detail.permanentAddress}
                     onChange={(e) => setDetail({ ...detail, permanentAddress: e.target.value })}
                     readOnly={detailReadOnly}
-                    className="flex-1 border border-gray-300 px-2 py-1 rounded text-[13px] bg-white text-gray-900 disabled:bg-gray-100 h-14 resize-none"
+                    className="flex-1 min-w-0 border border-gray-300 px-2 py-1 rounded text-[13px] bg-white text-gray-900 disabled:bg-gray-100 h-14 resize-none"
                   />
                 </div>
                 <div className="flex items-center gap-2">
@@ -1040,7 +1031,7 @@ export default function DebitEntryPage() {
                 </div>
               </div>
 
-              <div className="w-24 h-24 bg-blue-100 border border-blue-300 shrink-0" />
+              <div className="w-24 h-24 bg-blue-100 border border-blue-300 shrink-0 self-start mx-auto sm:mx-0" />
             </div>
           </fieldset>
 
@@ -1060,7 +1051,7 @@ export default function DebitEntryPage() {
             </p>
           )}
 
-          <div className="flex justify-center gap-5">
+          <div className="flex justify-center gap-5 flex-wrap">
             <button
               onClick={handleAdd}
               disabled={saving}

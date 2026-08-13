@@ -600,7 +600,7 @@ export default function AdmissionFeePage() {
     if (student) {
       setStudentTypeTab(student.StudentType === "Old" ? "Old" : "New");
       setLateralEntry(student.LateralEntry === "Yes");
-      setSession((prev) => prev || student.Session || currentSession || "");
+      setSession((prev) => prev || student.Session );
       setOnAccountOf((prev) => prev || "Fee");
       setFeeRows(buildFeeRows(feeHeads));
     }
